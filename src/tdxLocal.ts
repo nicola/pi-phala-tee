@@ -106,7 +106,24 @@ export async function verifyTdxLocal(
 	try {
 		writeFileSync(quotePath, intelQuoteHex);
 
-		const env: NodeJS.ProcessEnv = { ...process.env };
+		// Pass only an allow-listed subset of env vars to dcap-qvl. Inheriting
+		// the parent's full env would let a malicious parent process inject
+		// PCCS_URL / HTTPS_PROXY / RUST_LOG / ... to divert collateral fetching
+		// (DoS, not false-✓) or leak details via stderr.
+		// https://github.com/nicola/pi-phala-tee/issues/8
+		const env: NodeJS.ProcessEnv = {};
+		for (const key of [
+			"PATH",
+			"HOME",
+			"LANG",
+			"LC_ALL",
+			"SSL_CERT_FILE",
+			"SSL_CERT_DIR",
+			"TMPDIR",
+		]) {
+			const v = process.env[key];
+			if (typeof v === "string") env[key] = v;
+		}
 		if (opts?.pccsUrl) env.PCCS_URL = opts.pccsUrl;
 
 		const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>(
