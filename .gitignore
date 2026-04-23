@@ -1,0 +1,25 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Build / tmp
+*.log
+.tmp/
+.cache/
+
+# Extension local state (never commit)
+phala-tee.json
+tee-audit.jsonl
+
+# Secrets — defense in depth, API keys should never appear here anyway
+.env
+.env.*
+auth.json

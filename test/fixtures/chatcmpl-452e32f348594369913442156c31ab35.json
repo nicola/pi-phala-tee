@@ -1,0 +1,46 @@
+{
+  "model": "phala/qwen-2.5-7b-instruct",
+  "chat_id": "chatcmpl-452e32f348594369913442156c31ab35",
+  "request_bytes_utf8": "{\"model\":\"phala/qwen-2.5-7b-instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly the word: pong\"}],\"stream\":false,\"temperature\":0,\"max_tokens\":8}",
+  "request_sha256": "7b9bd946a8da3328819515d940e38911c7c0110ca47c599c5be9a8cd56113bd9",
+  "response_json": {
+    "id": "chatcmpl-452e32f348594369913442156c31ab35",
+    "object": "chat.completion",
+    "created": 1776935575,
+    "model": "qwen/qwen-2.5-7b-instruct",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "pong",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": [],
+          "reasoning_content": null
+        },
+        "logprobs": null,
+        "finish_reason": "stop",
+        "stop_reason": null,
+        "token_ids": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "prompt_tokens": 36,
+      "total_tokens": 38,
+      "completion_tokens": 2,
+      "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+  },
+  "signed_text": "7b9bd946a8da3328819515d940e38911c7c0110ca47c599c5be9a8cd56113bd9:b91ad1b2d1cfaaf5300d9326646240139f796bac0ddc6fa0c8de5e7b1339a0af",
+  "signature": "0x210afc8870f2a5d32f0cf0ef0a34e9ff6c01dddc8bb3a49e80a547d7337ab89f17a35aa31ec3d8c11cdc05de869bc048816f607ba0cce491157556e543dcd0eb1c",
+  "signing_address": "0x3E6900B04b75e068B52304803Ce6013a12C8Fe0f",
+  "signing_algo": "ecdsa"
+}

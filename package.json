@@ -1,0 +1,19 @@
+{
+  "name": "phala-tee",
+  "version": "0.1.0",
+  "description": "pi extension: register Phala Confidential AI (GPU TEE via dstack) as an LLM provider, with per-turn cryptographic verification of the Intel TDX + NVIDIA CC + signing-address attestation chain.",
+  "private": true,
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0"
+  },
+  "scripts": {
+    "test": "node --experimental-vm-modules --test test/*.test.mjs"
+  }
+}
