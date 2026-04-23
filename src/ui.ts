@@ -161,23 +161,20 @@ export function fullReport(v: Verdict, theme: ThemeLike): string {
 	}
 	out.push("");
 	out.push(theme.fg("muted", "Trust roots:"));
-	out.push(
-		theme.fg("dim", "  sig      secp256k1 / ed25519 verified locally"),
-	);
-	out.push(
-		theme.fg("dim", "  req/resp sha256 of wire bytes (local) vs server-signed hash"),
-	);
-	out.push(
-		theme.fg("dim", "  gpu      NRAS JWT verified against NVIDIA JWKS locally (ES384)"),
-	);
+	out.push(theme.fg("dim", "  sig      secp256k1 / ed25519 verified locally"));
+	out.push(theme.fg("dim", "  req/resp sha256 of wire bytes (local) vs server-signed hash"));
+	out.push(theme.fg("dim", "  gpu      NRAS JWT verified against NVIDIA JWKS locally (ES384)"));
 	out.push(
 		theme.fg(
-			"warning",
-			"  tdx      DELEGATED to cloud-api.phala.com (Phala-operated) — v0.1",
+			"dim",
+			"  tdx      verified locally by bundled dcap-qvl against Intel root",
 		),
 	);
 	out.push(
-		theme.fg("warning", "           will move to local dcap-qvl and upgrade ⚠→✓"),
+		theme.fg(
+			"dim",
+			"           (or ⚠ delegated to cloud-api.phala.com if binary is missing)",
+		),
 	);
 	out.push(theme.fg("dim", "  app      TOFU / strict / permissive — see /tee-trust"));
 	return out.join("\n");
