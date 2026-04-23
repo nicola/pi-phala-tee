@@ -105,6 +105,18 @@ export interface JwtVerifyResult {
 	payload: Record<string, unknown>;
 }
 
+/** Thrown by jwtVerifyES384 when the JWT references a kid the JWKS lacks.
+ * Callers (see verifyGpuFacet) should invalidate their JWKS cache and retry
+ * once, so a routine NRAS key rotation doesn't produce a false ✗. */
+export class JwtKidNotFoundError extends Error {
+	readonly kid: string;
+	constructor(kid: string) {
+		super(`jwt: kid not found in jwks: ${kid}`);
+		this.kid = kid;
+		this.name = "JwtKidNotFoundError";
+	}
+}
+
 /**
  * Verify a compact JWT signed with ES384 (ECDSA over P-384 + SHA-384) using
  * the provided JWKS. Returns the decoded header and payload on success.
@@ -125,7 +137,7 @@ export function jwtVerifyES384(jwt: string, jwks: JwksKey[]): JwtVerifyResult {
 	const kid = header.kid;
 	if (typeof kid !== "string") throw new Error("jwt: missing kid");
 	const key = jwks.find((k) => k.kid === kid);
-	if (!key) throw new Error(`jwt: kid not found in jwks: ${kid}`);
+	if (!key) throw new JwtKidNotFoundError(kid);
 	if (key.kty !== "EC" || key.crv !== "P-384") {
 		throw new Error(`jwt: wrong key type for ES384: kty=${key.kty} crv=${key.crv}`);
 	}

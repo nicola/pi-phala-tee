@@ -30,6 +30,7 @@ import {
 	ecdsaRecoverEthAddress,
 	ed25519Verify,
 	hexToBytes,
+	JwtKidNotFoundError,
 	jwtVerifyES384,
 	type JwksKey,
 	sha256Hex,
@@ -559,7 +560,7 @@ async function verifyGpuFacet(
 		return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS JWKS fetch failed: ${errStr(e)}` };
 	}
 
-	let verdictBody: Record<string, unknown>;
+	let jwt: string | undefined;
 	try {
 		const r = await rawFetch()(NRAS_URL, {
 			method: "POST",
@@ -570,15 +571,39 @@ async function verifyGpuFacet(
 		if (!r.ok) return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS HTTP ${r.status}` };
 		const result = (await r.json()) as unknown;
 		// NRAS returns a list of [key, jwt] pairs.
-		let jwt: string | undefined;
 		if (Array.isArray(result) && result.length && Array.isArray(result[0]) && result[0].length >= 2) {
 			jwt = result[0][1] as string;
 		}
 		if (!jwt) return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: "NRAS response missing JWT" };
+	} catch (e) {
+		return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS fetch: ${errStr(e)}` };
+	}
+
+	// Verify the JWT. If the kid is missing from our JWKS cache, NRAS likely
+	// rotated its signing key since we cached. Invalidate and retry once
+	// before giving up. https://github.com/nicola/pi-phala-tee/issues/4
+	let verdictBody: Record<string, unknown>;
+	try {
 		const ver = jwtVerifyES384(jwt, jwks);
 		verdictBody = ver.payload;
 	} catch (e) {
-		return { id: "gpu", label: "NVIDIA GPU CC", status: "fail", detail: `NRAS JWT verify: ${errStr(e)}` };
+		if (e instanceof JwtKidNotFoundError) {
+			try {
+				invalidateJwksCache();
+				const fresh = await getNrasJwks(signal, true);
+				const ver = jwtVerifyES384(jwt, fresh);
+				verdictBody = ver.payload;
+			} catch (e2) {
+				return {
+					id: "gpu",
+					label: "NVIDIA GPU CC",
+					status: "fail",
+					detail: `NRAS JWT verify (after JWKS refresh): ${errStr(e2)}`,
+				};
+			}
+		} else {
+			return { id: "gpu", label: "NVIDIA GPU CC", status: "fail", detail: `NRAS JWT verify: ${errStr(e)}` };
+		}
 	}
 
 	const overall = verdictBody["x-nvidia-overall-att-result"];
@@ -692,15 +717,19 @@ function evaluateAppIdentity(
 // Helpers
 // -----------------------------------------------------------------------------
 
-async function getNrasJwks(signal?: AbortSignal): Promise<JwksKey[]> {
+async function getNrasJwks(signal?: AbortSignal, forceRefresh = false): Promise<JwksKey[]> {
 	const now = Date.now();
-	if (jwksCache && now - jwksCache.fetchedAt < JWKS_TTL) return jwksCache.keys;
+	if (!forceRefresh && jwksCache && now - jwksCache.fetchedAt < JWKS_TTL) return jwksCache.keys;
 	const r = await rawFetch()(NRAS_JWKS, { signal });
 	if (!r.ok) throw new Error(`JWKS HTTP ${r.status}`);
 	const body = (await r.json()) as { keys?: JwksKey[] };
 	if (!Array.isArray(body.keys)) throw new Error("JWKS: missing keys");
 	jwksCache = { fetchedAt: now, keys: body.keys };
 	return body.keys;
+}
+
+function invalidateJwksCache(): void {
+	jwksCache = undefined;
 }
 
 async function fetchJson<T>(url: string, apiKey: string, signal?: AbortSignal): Promise<T> {
