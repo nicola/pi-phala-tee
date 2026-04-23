@@ -48,6 +48,47 @@ type Fetch = typeof globalThis.fetch;
 let installed = false;
 const records: TurnRecord[] = [];
 
+// In-flight barrier. Each completions request we intercept increments
+// `inFlight` before we await the upstream fetch, and decrements it (via
+// `finishInFlight`) only once its tee'd response body has been fully
+// consumed and the resulting TurnRecord has been pushed. `waitForInFlight`
+// returns a promise that resolves when `inFlight` hits 0, OR after the
+// given timeout — whichever comes first.
+//
+// Why: pi emits `turn_end` as soon as the assistant message is assembled,
+// but our background `consumeForRecord` may still be draining the tee'd
+// stream at that instant. Without this barrier, `findRecord()` in turn_end
+// can return the PREVIOUS turn's record, causing req-bind/resp-bind to
+// fail-closed on wrong bytes (a false ✗ rather than a false ✓, but still
+// confusing). See https://github.com/nicola/pi-phala-tee/issues/3
+let inFlight = 0;
+const drainWaiters: Array<() => void> = [];
+
+function startInFlight(): void {
+	inFlight++;
+}
+
+function finishInFlight(): void {
+	inFlight = Math.max(0, inFlight - 1);
+	if (inFlight === 0) {
+		while (drainWaiters.length > 0) drainWaiters.shift()!();
+	}
+}
+
+export function waitForInFlight(timeoutMs = 500): Promise<void> {
+	if (inFlight === 0) return Promise.resolve();
+	return new Promise<void>((resolve) => {
+		let resolved = false;
+		const done = () => {
+			if (resolved) return;
+			resolved = true;
+			resolve();
+		};
+		drainWaiters.push(done);
+		setTimeout(done, timeoutMs);
+	});
+}
+
 export function installInterceptor(): void {
 	if (installed) return;
 	installed = true;
@@ -64,10 +105,19 @@ export function installInterceptor(): void {
 		const isCompletions = url.includes(COMPLETIONS_PATH);
 		if (!isCompletions) return prior(input, init);
 
+		startInFlight();
 		const startedAt = Date.now();
 		const reqBytes = bodyToBytes(init?.body);
 
-		const resp = await prior(input, init);
+		let resp: Response;
+		try {
+			resp = await prior(input, init);
+		} catch (e) {
+			// fetch itself failed — no body to consume, clear the in-flight slot
+			// so turn_end doesn't wait the full timeout.
+			finishInFlight();
+			throw e;
+		}
 		const contentType = resp.headers.get("content-type") || "";
 		const streamed = contentType.includes("text/event-stream");
 
@@ -80,13 +130,15 @@ export function installInterceptor(): void {
 				requestBytes: reqBytes ?? new Uint8Array(0),
 				httpStatus: resp.status,
 			});
+			finishInFlight();
 			return resp;
 		}
 
 		// Tee the body stream: one side flows to the caller, the other to us.
 		const [callerStream, ourStream] = resp.body.tee();
 
-		// Consume our side in the background.
+		// Consume our side in the background. finishInFlight runs after the
+		// record is pushed (or after teeing fails), inside consumeForRecord.
 		void consumeForRecord(ourStream, streamed, startedAt, reqBytes ?? new Uint8Array(0), resp.status);
 
 		return new Response(callerStream, {
@@ -167,6 +219,8 @@ async function consumeForRecord(
 		});
 	} catch {
 		// If teeing fails, we just won't have a record for this turn; fine.
+	} finally {
+		finishInFlight();
 	}
 }
 

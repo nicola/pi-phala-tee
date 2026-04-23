@@ -22,7 +22,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { appendAudit } from "./src/audit.js";
-import { findRecord, installInterceptor, lastRecord } from "./src/fetchIntercept.js";
+import { findRecord, installInterceptor, lastRecord, waitForInFlight } from "./src/fetchIntercept.js";
 import { PHALA_TEE_MODELS } from "./src/models.js";
 import { loadSettings, saveSettings } from "./src/settings.js";
 import { fullReport, widgetLines, widgetLinesIdle } from "./src/ui.js";
@@ -153,6 +153,12 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
+		// Race fix: pi emits turn_end as soon as the assistant message is
+		// assembled, but our interceptor may still be draining the response
+		// stream in the background. Wait up to 500ms for the record to land
+		// before we try to verify against it.
+		// https://github.com/nicola/pi-phala-tee/issues/3
+		await waitForInFlight(500);
 		const record = findRecord();
 		if (!record) {
 			ctx.ui.setWidget(
