@@ -278,25 +278,22 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 		try {
 			const mrc = hexToBytes(tdReport.mr_config_id);
 			const wantComposeBytes = hexToBytes(composeHash);
-			// Look for the compose-hash bytes anywhere in mr_config_id. The
-			// dstack ABI places them at offset 1, but we match loosely to be
-			// resilient to format tweaks; any exact substring match is still a
-			// strong crypto binding (random collision is ~2^-256).
-			let found = false;
-			for (let i = 0; i + wantComposeBytes.length <= mrc.length; i++) {
-				let eq = true;
-				for (let j = 0; j < wantComposeBytes.length; j++) {
-					if (mrc[i + j] !== wantComposeBytes[j]) {
-						eq = false;
-						break;
-					}
-				}
-				if (eq) {
-					found = true;
-					break;
-				}
+			// dstack ABI: mr_config_id is 48 bytes laid out as
+			//   [0]      = 0x01 (domain-separation / version byte)
+			//   [1..33)  = SHA-256 compose-hash (32 bytes)
+			//   [33..48) = zero padding
+			// We check the version byte and compare the compose-hash at the
+			// specified offset, constant-time. An unknown version byte returns
+			// "unchecked" rather than faking an ⚠ or ✓ — bump the version here
+			// intentionally after reviewing the upstream change.
+			// https://github.com/nicola/pi-phala-tee/issues/7
+			if (mrc.length !== 48 || wantComposeBytes.length !== 32) {
+				mrConfigBinding = "unchecked";
+			} else if (mrc[0] !== 0x01) {
+				mrConfigBinding = "unchecked";
+			} else {
+				mrConfigBinding = constantTimeEq(mrc.slice(1, 33), wantComposeBytes) ? "ok" : "mismatch";
 			}
-			mrConfigBinding = found ? "ok" : "mismatch";
 		} catch {
 			mrConfigBinding = "unchecked";
 		}
