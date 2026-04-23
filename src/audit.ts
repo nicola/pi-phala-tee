@@ -18,7 +18,7 @@
  *     files, which they already control.
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Verdict } from "./types.js";
 
@@ -26,6 +26,21 @@ export function appendAudit(path: string, verdict: Verdict): void {
 	if (!path) return;
 	try {
 		mkdirSync(dirname(path), { recursive: true });
+		// First-time creation: create empty file with 0600 so only the current
+		// user can read it. The log doesn't contain secrets, but it does
+		// contain per-turn timestamps, TDX quotes, and signing addresses that
+		// could fingerprint usage patterns if exposed to other local users.
+		// https://github.com/nicola/pi-phala-tee/issues/10
+		if (!existsSync(path)) {
+			writeFileSync(path, "", { mode: 0o600 });
+		}
+		// Tighten perms even on pre-existing files that might have been created
+		// at 0644 by an older version of this extension.
+		try {
+			chmodSync(path, 0o600);
+		} catch {
+			/* ignore — e.g. Windows where mode is advisory */
+		}
 		const entry = {
 			ts: new Date().toISOString(),
 			chat_id: verdict.chatId,
