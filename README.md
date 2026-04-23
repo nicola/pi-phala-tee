@@ -29,7 +29,7 @@ I approve?"* is crypto, not vibes.
 cd ~/.pi/agent/extensions
 git clone https://github.com/nicola/pi-phala-tee.git phala-tee
 cd phala-tee
-npm ci                       # install JS deps from lockfile
+npm ci                       # install JS deps at exact lockfile versions
 npm run build:dcap-qvl       # build local TDX verifier from pinned source
 ```
 
