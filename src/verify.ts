@@ -612,15 +612,20 @@ async function verifyGpuFacet(
 	const overall = verdictBody["x-nvidia-overall-att-result"];
 	const eatNonce = verdictBody.eat_nonce;
 	const exp = typeof verdictBody.exp === "number" ? verdictBody.exp : 0;
+	const nbf = typeof verdictBody.nbf === "number" ? verdictBody.nbf : 0;
 	const now = Math.floor(Date.now() / 1000);
+	const CLOCK_SKEW_S = 60;
 	if (overall !== true) {
 		return { id: "gpu", label: "NVIDIA GPU CC", status: "fail", detail: `x-nvidia-overall-att-result=${String(overall)}` };
 	}
 	if (typeof eatNonce !== "string" || eatNonce.toLowerCase() !== expectedNonceHex.toLowerCase()) {
 		return { id: "gpu", label: "NVIDIA GPU CC", status: "fail", detail: "NRAS JWT eat_nonce mismatch" };
 	}
-	if (exp && exp < now) {
+	if (exp && exp < now - CLOCK_SKEW_S) {
 		return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS JWT expired (exp=${exp})` };
+	}
+	if (nbf && nbf > now + CLOCK_SKEW_S) {
+		return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS JWT not yet valid (nbf=${nbf}, now=${now})` };
 	}
 	return { id: "gpu", label: "NVIDIA GPU CC", status: "ok", detail: `NRAS JWT verified (ES384); overall=true; nonce bound; exp=${exp}` };
 }
