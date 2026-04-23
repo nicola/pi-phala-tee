@@ -23,3 +23,6 @@ tee-audit.jsonl
 .env
 .env.*
 auth.json
+
+# Built dcap-qvl binaries are per-user; build via `npm run build:dcap-qvl`
+bin/

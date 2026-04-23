@@ -29,8 +29,18 @@ I approve?"* is crypto, not vibes.
 cd ~/.pi/agent/extensions
 git clone https://github.com/nicola/pi-phala-tee.git phala-tee
 cd phala-tee
-npm install
+npm ci                       # install JS deps from lockfile
+npm run build:dcap-qvl       # build local TDX verifier from pinned source
 ```
+
+The `build:dcap-qvl` step clones [Phala-Network/dcap-qvl](https://github.com/Phala-Network/dcap-qvl)
+at a pinned commit, compiles the CLI with `cargo`, and installs the binary
+into `bin/<platform>-<arch>/`. Requires a Rust toolchain
+([rustup.rs](https://rustup.rs/)). Takes 1–2 minutes on first run. You do
+NOT need to re-run unless you update the extension and the pinned commit
+changes. If you skip this step the extension still works, but `tdx`
+verification falls back to Phala's hosted verifier (shown as ⚠ — see
+[Why build from source?](#why-build-dcap-qvl-from-source)).
 
 Add your Phala API key to `~/.pi/agent/auth.json`:
 
@@ -44,11 +54,6 @@ Add your Phala API key to `~/.pi/agent/auth.json`:
 ```
 
 Then start `pi`, `/model` → pick a `phala-tee/*` model, and chat.
-
-A bundled `dcap-qvl` binary for **darwin-arm64** is included for fully-local
-TDX verification. Users on other platforms still get the extension but fall
-back to Phala's hosted verifier (shown as ⚠ with a clear message). See
-[Other platforms](#other-platforms) below.
 
 ---
 
@@ -172,27 +177,34 @@ verification chain offline from a single line of it.
 
 ---
 
-## Other platforms
+## Why build `dcap-qvl` from source?
 
-Bundled binaries live in `bin/<platform>-<arch>/dcap-qvl`. v0.2 ships
-**darwin-arm64** only. On any other platform the extension falls back to
-Phala's hosted verifier (`tdx` facet shown as ⚠) with a clear message.
+The `tdx` facet flips to ✓ only when the Intel TDX quote is verified
+**locally** by `dcap-qvl`, against Intel's root CA baked into the binary
+itself. If we shipped a pre-built binary in this repo, an attacker who
+tampered with the repo (compromised maintainer account, CDN injection,
+etc.) could swap in a backdoored binary that outputs `"Quote verified"`
+for *any* quote — silently producing a false ✓ on the single largest
+attack surface of this extension.
 
-To build your own local binary (recommended):
+By building from source at a pinned upstream commit, trust reduces to:
 
-```bash
-git clone https://github.com/Phala-Network/dcap-qvl.git
-cd dcap-qvl/cli
-cargo build --release
+1. your local Rust toolchain
+2. the pinned Phala-Network/dcap-qvl commit
+   (see `scripts/build-dcap-qvl.sh`, verify on GitHub before bumping)
+3. the crates.io dependencies resolved by `Cargo.lock` in that commit
 
-cd ~/.pi/agent/extensions/phala-tee
-mkdir -p bin/<platform>-<arch>
-cp /path/to/dcap-qvl/cli/target/release/dcap-qvl bin/<platform>-<arch>/
-```
+Supported platforms that `scripts/build-dcap-qvl.sh` auto-detects:
+`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `win32-x64`.
 
-Where `<platform>-<arch>` is one of `darwin-arm64`, `darwin-x64`,
-`linux-x64`, `linux-arm64`, `win32-x64` (Windows uses `dcap-qvl.exe`).
-Restart pi or `/reload` and the `tdx` facet should flip to ✓.
+After building, note the printed SHA-256. If you share a deployment
+environment with teammates, compare digests — any drift means either a
+toolchain difference or a tamper.
+
+If you can't build locally and accept ⚠ `tdx` indefinitely, the extension
+still works — every other facet remains cryptographic. The overall
+verdict just can't reach ✓ because the `app` facet is also downgraded to
+⚠ when TDX is delegated (see [#1](https://github.com/nicola/pi-phala-tee/issues/1)).
 
 ---
 

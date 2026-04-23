@@ -14,6 +14,7 @@
     "@noble/hashes": "^1.5.0"
   },
   "scripts": {
-    "test": "node --experimental-vm-modules --test test/*.test.mjs"
+    "test": "node --experimental-vm-modules --test test/*.test.mjs",
+    "build:dcap-qvl": "bash ./scripts/build-dcap-qvl.sh"
   }
 }
