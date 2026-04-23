@@ -56,6 +56,40 @@ function resolveApiKey(): string | undefined {
 	return undefined;
 }
 
+// Throttle settings writes. evaluateAppIdentity touches `lastSeen` on every
+// TOFU-match turn, which would otherwise rewrite phala-tee.json on every
+// turn. We only care about materially-changed settings (pins added, policy
+// changed) being persisted promptly; lastSeen can lag.
+// https://github.com/nicola/pi-phala-tee/issues/15
+const SETTINGS_WRITE_MIN_INTERVAL_MS = 60_000;
+let lastSettingsWriteAt = 0;
+let lastSettingsWriteSignature = "";
+
+function settingsSignature(s: ReturnType<typeof loadSettings>): string {
+	return JSON.stringify({
+		mode: s.appIdentityMode,
+		strict: s.strictMode,
+		fns: s.forceNonStreaming,
+		pins: s.pinnedApps.map((p) => [p.appId, p.composeHash, p.osImageHash, p.keyProvider]),
+		allowed: s.allowedApps.map((p) => [p.appId, p.composeHash, p.osImageHash]),
+	});
+}
+
+function maybeSaveSettings(s: ReturnType<typeof loadSettings>): void {
+	const sig = settingsSignature(s);
+	const now = Date.now();
+	const materialChange = sig !== lastSettingsWriteSignature;
+	const stale = now - lastSettingsWriteAt > SETTINGS_WRITE_MIN_INTERVAL_MS;
+	if (!materialChange && !stale) return;
+	try {
+		saveSettings(s);
+		lastSettingsWriteAt = now;
+		lastSettingsWriteSignature = sig;
+	} catch {
+		/* don't break the UI if settings write fails */
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	// Install the fetch interceptor as early as possible so it covers
 	// the very first provider call in this session.
@@ -254,11 +288,7 @@ export default function (pi: ExtensionAPI) {
 
 		// Persist evidence (no secrets) and possibly updated TOFU pins.
 		appendAudit(settings.auditLogPath, verdict);
-		try {
-			saveSettings(settings);
-		} catch {
-			/* don't break the UI if settings write fails */
-		}
+		maybeSaveSettings(settings!);
 
 		// In print mode (-p) the session may already be torn down by the time
 		// this async handler completes. Any ctx.ui call would throw a
