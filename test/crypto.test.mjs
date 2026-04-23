@@ -58,9 +58,11 @@ if (!crypto) {
 		);
 	});
 
-	test("constantTimeEq works", () => {
-		assert.equal(crypto.constantTimeEq(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])), true);
-		assert.equal(crypto.constantTimeEq(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 4])), false);
-		assert.equal(crypto.constantTimeEq(new Uint8Array([1]), new Uint8Array([1, 2])), false);
+	test("bytesEq works", () => {
+		assert.equal(crypto.bytesEq(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])), true);
+		assert.equal(crypto.bytesEq(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 4])), false);
+		assert.equal(crypto.bytesEq(new Uint8Array([1]), new Uint8Array([1, 2])), false);
+		// deprecated alias still works for backward compat
+		assert.equal(crypto.constantTimeEq(new Uint8Array([1]), new Uint8Array([1])), true);
 	});
 }

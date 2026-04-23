@@ -35,12 +35,27 @@ export function bytesToHex(b: Uint8Array): string {
 	return s;
 }
 
-export function constantTimeEq(a: Uint8Array, b: Uint8Array): boolean {
+/**
+ * Equality comparison that does not short-circuit on first-byte difference.
+ * We do NOT claim full constant-time (JS is not the right layer for that
+ * — engine optimizations, GC, branch prediction all leak timing). But we
+ * avoid the obvious early-exit that makes per-byte diff timing-visible.
+ *
+ * Length mismatch returns false immediately: this is acceptable because our
+ * uses always compare fixed-size inputs (32-byte nonces, 20-byte Ethereum
+ * addresses right-padded to 32) so length is a public constant.
+ *
+ * https://github.com/nicola/pi-phala-tee/issues/12
+ */
+export function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
 	if (a.length !== b.length) return false;
 	let d = 0;
 	for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
 	return d === 0;
 }
+
+/** @deprecated Use {@link bytesEq}. JavaScript can't guarantee constant time. */
+export const constantTimeEq = bytesEq;
 
 export function sha256Hex(data: Uint8Array | string): string {
 	const bytes = typeof data === "string" ? TE.encode(data) : data;

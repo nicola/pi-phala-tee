@@ -25,8 +25,8 @@
 
 import { canonicalize } from "./canonical.js";
 import {
+	bytesEq,
 	bytesToHex,
-	constantTimeEq,
 	ecdsaRecoverEthAddress,
 	ed25519Verify,
 	hexToBytes,
@@ -292,7 +292,7 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 			} else if (mrc[0] !== 0x01) {
 				mrConfigBinding = "unchecked";
 			} else {
-				mrConfigBinding = constantTimeEq(mrc.slice(1, 33), wantComposeBytes) ? "ok" : "mismatch";
+				mrConfigBinding = bytesEq(mrc.slice(1, 33), wantComposeBytes) ? "ok" : "mismatch";
 			}
 		} catch {
 			mrConfigBinding = "unchecked";
@@ -515,17 +515,17 @@ function verifyReportDataFacet(
 			}
 			const expected = new Uint8Array(32);
 			expected.set(addr, 0); // right-pad with zeros
-			addrOk = constantTimeEq(embeddedAddr, expected);
+			addrOk = bytesEq(embeddedAddr, expected);
 		} else {
 			const pk = hexToBytes(signingAddress);
 			if (pk.length !== 32) {
 				return { id: "reportdata", label: "reportdata binding", status: "fail", detail: `ed25519 pubkey wrong length: ${pk.length}` };
 			}
-			addrOk = constantTimeEq(embeddedAddr, pk);
+			addrOk = bytesEq(embeddedAddr, pk);
 		}
 
 		const nonceBytes = hexToBytes(nonce);
-		const nonceOk = constantTimeEq(embeddedNonce, nonceBytes);
+		const nonceOk = bytesEq(embeddedNonce, nonceBytes);
 
 		if (addrOk && nonceOk) {
 			return { id: "reportdata", label: "reportdata binding", status: "ok", detail: "signing_address and nonce bound in TDX quote" };
