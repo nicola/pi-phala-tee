@@ -427,7 +427,13 @@ function responseBindFacet(record: TurnRecord, signedRespHash: string): Facet {
 			id: "resp-bind",
 			label: "response content binding",
 			status: "warn",
-			detail: "streamed response — server canonical form is not client-reproducible; use non-streaming for ✓",
+			// This warning used to imply a network/UX issue. It isn't: on a
+			// streamed turn we CANNOT verify that the bytes we received match
+			// what the TEE actually signed. A malicious server could sign a
+			// sanitized response while streaming a different one to the client.
+			// See https://github.com/nicola/pi-phala-tee/issues/6
+			detail:
+				"STREAMED TURN: response bytes are NOT cryptographically tied to what the TEE signed. Server could have signed a different response. Set forceNonStreaming=true in ~/.pi/agent/phala-tee.json to disable streaming and regain ✓.",
 		};
 	}
 	if (!record.responseBytes) {

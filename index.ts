@@ -142,6 +142,21 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget(STATUS_ID, widgetLinesIdle(ctx.ui.theme, "ready · awaiting first turn"));
 	};
 
+	// Optional: force stream:false on outgoing chat completions so that
+	// resp-bind can be verified. Trades streaming UX for full ✓.
+	// https://github.com/nicola/pi-phala-tee/issues/6
+	pi.on("before_provider_request", (event) => {
+		if (!settings?.forceNonStreaming) return;
+		const model = event.model as { provider?: string } | undefined;
+		if (model?.provider !== PROVIDER_NAME) return;
+		const payload = event.payload as Record<string, unknown> | undefined;
+		if (!payload || typeof payload !== "object") return;
+		if (payload.stream === true) {
+			payload.stream = false;
+			return payload;
+		}
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
 		if (settingsError && ctx.hasUI && ctx.model?.provider === PROVIDER_NAME) {
 			ctx.ui.setWidget(
@@ -299,6 +314,7 @@ export default function (pi: ExtensionAPI) {
 				lines.push(`App-identity mode: ${settings.appIdentityMode}`);
 				lines.push(`Strict mode:       ${settings.strictMode}`);
 				lines.push(`Cache TTL:         ${Math.round(settings.signingKeyCacheMs / 1000)}s`);
+				lines.push(`Force non-stream:  ${settings.forceNonStreaming} (when true, resp-bind can always be ✓)`);
 				lines.push("");
 				lines.push(`Pinned apps (${settings.pinnedApps.length}):`);
 				for (const p of settings.pinnedApps) {

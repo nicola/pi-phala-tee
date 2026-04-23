@@ -97,6 +97,10 @@ export interface ExtensionSettings {
 	strictMode: boolean;
 	/** Audit log path. Empty string disables audit log. */
 	auditLogPath: string;
+	/** If true, force `stream: false` on every outgoing chat completion so that
+	 * resp-bind can be cryptographically verified. Disables token-by-token
+	 * UX but closes the streamed-turn content-binding gap (issue #6). */
+	forceNonStreaming: boolean;
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -106,4 +110,5 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 	signingKeyCacheMs: 5 * 60 * 1000,
 	strictMode: false,
 	auditLogPath: "", // filled in at init time with ~/.pi/tee-audit.jsonl
+	forceNonStreaming: false,
 };
