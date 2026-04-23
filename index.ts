@@ -176,20 +176,15 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget(STATUS_ID, widgetLinesIdle(ctx.ui.theme, "ready · awaiting first turn"));
 	};
 
-	// Optional: force stream:false on outgoing chat completions so that
-	// resp-bind can be verified. Trades streaming UX for full ✓.
-	// https://github.com/nicola/pi-phala-tee/issues/6
-	pi.on("before_provider_request", (event) => {
-		if (!settings?.forceNonStreaming) return;
-		const model = event.model as { provider?: string } | undefined;
-		if (model?.provider !== PROVIDER_NAME) return;
-		const payload = event.payload as Record<string, unknown> | undefined;
-		if (!payload || typeof payload !== "object") return;
-		if (payload.stream === true) {
-			payload.stream = false;
-			return payload;
-		}
-	});
+	// forceNonStreaming was an attempted workaround for the streamed-turn
+	// resp-bind gap (issue #6). It turned out to be unimplementable from an
+	// extension: pi-ai commits to the streaming code path before
+	// before_provider_request fires, so flipping `stream:false` in the
+	// outgoing payload makes the response-side SSE parser throw
+	// 'openaiStream is not async iterable'. Leaving the setting in place as a
+	// no-op so existing phala-tee.json files don't break; honest fix is
+	// tracked in #6 pending either upstream response-canonical-form support
+	// from Phala, or a pi-ai feature to opt a single provider out of streaming.
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (settingsError && ctx.hasUI && ctx.model?.provider === PROVIDER_NAME) {

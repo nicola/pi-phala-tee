@@ -442,7 +442,7 @@ function responseBindFacet(record: TurnRecord, signedRespHash: string): Facet {
 			// sanitized response while streaming a different one to the client.
 			// See https://github.com/nicola/pi-phala-tee/issues/6
 			detail:
-				"STREAMED TURN: response bytes are NOT cryptographically tied to what the TEE signed. Server could have signed a different response. Set forceNonStreaming=true in ~/.pi/agent/phala-tee.json to disable streaming and regain ✓.",
+				"STREAMED TURN: response bytes are NOT cryptographically tied to what the TEE signed. A malicious server could have signed a different response than what was streamed. Tracked in issue #6 — needs either upstream support from Phala (canonical response bytes endpoint) or a pi-ai flag to disable streaming per-provider.",
 		};
 	}
 	if (!record.responseBytes) {
