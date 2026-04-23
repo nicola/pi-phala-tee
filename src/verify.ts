@@ -255,7 +255,13 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 	facets.push(rdFacet);
 
 	// --- 8. NVIDIA GPU CC
-	const gpuFacet = await verifyGpuFacet(att.nvidia_payload, nonce, input.signal);
+	const gpuFacetWithExp = await verifyGpuFacet(att.nvidia_payload, nonce, input.signal);
+	const gpuFacet: Facet = {
+		id: gpuFacetWithExp.id,
+		label: gpuFacetWithExp.label,
+		status: gpuFacetWithExp.status,
+		detail: gpuFacetWithExp.detail,
+	};
 	facets.push(gpuFacet);
 
 	// --- 9. App identity
@@ -342,8 +348,14 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 		(gpuFacet.status === "ok" || gpuFacet.status === "warn") &&
 		appFacet.status !== "fail"
 	) {
+		// Cap cache TTL at the NRAS JWT expiry: we must never treat a signing
+		// key as attested past the point where its GPU attestation JWT expires.
+		// https://github.com/nicola/pi-phala-tee/issues/16
+		const requested = now + input.signingKeyCacheMs;
+		const jwtExpMs = gpuFacetWithExp.jwtExpSeconds ? gpuFacetWithExp.jwtExpSeconds * 1000 : Number.POSITIVE_INFINITY;
+		const expiresAt = Math.min(requested, jwtExpMs);
 		const cacheEntry: CachedAtt = {
-			expiresAt: now + input.signingKeyCacheMs,
+			expiresAt,
 			tdxFacet,
 			reportdataFacet: rdFacet,
 			gpuFacet,
@@ -545,7 +557,7 @@ async function verifyGpuFacet(
 	nvidiaPayloadStr: string,
 	expectedNonceHex: string,
 	signal?: AbortSignal,
-): Promise<Facet> {
+): Promise<Facet & { jwtExpSeconds?: number }> {
 	let payload: { nonce?: string };
 	try {
 		payload = JSON.parse(nvidiaPayloadStr) as { nonce?: string };
@@ -627,7 +639,13 @@ async function verifyGpuFacet(
 	if (nbf && nbf > now + CLOCK_SKEW_S) {
 		return { id: "gpu", label: "NVIDIA GPU CC", status: "warn", detail: `NRAS JWT not yet valid (nbf=${nbf}, now=${now})` };
 	}
-	return { id: "gpu", label: "NVIDIA GPU CC", status: "ok", detail: `NRAS JWT verified (ES384); overall=true; nonce bound; exp=${exp}` };
+	return {
+		id: "gpu",
+		label: "NVIDIA GPU CC",
+		status: "ok",
+		detail: `NRAS JWT verified (ES384); overall=true; nonce bound; exp=${exp}`,
+		jwtExpSeconds: exp || undefined,
+	};
 }
 
 function evaluateAppIdentity(
