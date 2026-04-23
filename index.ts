@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { appendAudit } from "./src/audit.js";
 import { findRecord, installInterceptor, lastRecord, waitForInFlight } from "./src/fetchIntercept.js";
 import { PHALA_TEE_MODELS } from "./src/models.js";
-import { loadSettings, saveSettings } from "./src/settings.js";
+import { loadSettings, saveSettings, SettingsCorruptError } from "./src/settings.js";
 import { fullReport, widgetLines, widgetLinesIdle } from "./src/ui.js";
 import type { Verdict } from "./src/types.js";
 import { verifyTurn } from "./src/verify.js";
@@ -62,7 +62,21 @@ export default function (pi: ExtensionAPI) {
 	installInterceptor();
 
 	// Load persistent settings (TOFU pins, allow-list, policy).
-	const settings = loadSettings();
+	// If the file is corrupt we refuse to operate: silently resetting to
+	// defaults would wipe the TOFU pin store, allowing an attacker who can
+	// corrupt the file to force a malicious re-pin on the next turn.
+	// https://github.com/nicola/pi-phala-tee/issues/5
+	let settings: ReturnType<typeof loadSettings> | undefined;
+	let settingsError: SettingsCorruptError | undefined;
+	try {
+		settings = loadSettings();
+	} catch (e) {
+		if (e instanceof SettingsCorruptError) {
+			settingsError = e;
+		} else {
+			throw e;
+		}
+	}
 
 	// Resolve the API key up front so pi-ai sends the LITERAL key, not the
 	// env-var name. pi-ai's `apiKey` field accepts either a literal key or an
@@ -128,8 +142,26 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget(STATUS_ID, widgetLinesIdle(ctx.ui.theme, "ready · awaiting first turn"));
 	};
 
-	pi.on("session_start", async (_event, ctx) => refreshWidget(ctx));
-	pi.on("model_select", async (_event, ctx) => refreshWidget(ctx));
+	pi.on("session_start", async (_event, ctx) => {
+		if (settingsError && ctx.hasUI && ctx.model?.provider === PROVIDER_NAME) {
+			ctx.ui.setWidget(
+				STATUS_ID,
+				widgetLinesIdle(ctx.ui.theme, `settings corrupt — see ${settingsError.path}`),
+			);
+			return;
+		}
+		refreshWidget(ctx);
+	});
+	pi.on("model_select", async (_event, ctx) => {
+		if (settingsError && ctx.hasUI && ctx.model?.provider === PROVIDER_NAME) {
+			ctx.ui.setWidget(
+				STATUS_ID,
+				widgetLinesIdle(ctx.ui.theme, `settings corrupt — see ${settingsError.path}`),
+			);
+			return;
+		}
+		refreshWidget(ctx);
+	});
 
 	pi.on("turn_end", async (event, ctx) => {
 		const modelId = event.message.model;
@@ -144,6 +176,24 @@ export default function (pi: ExtensionAPI) {
 			} catch {
 				/* stale ctx */
 			}
+			return;
+		}
+
+		if (settingsError || !settings) {
+			// Fail-closed: don't verify with a blank TOFU store.
+			ctx.ui.setWidget(
+				STATUS_ID,
+				widgetLinesIdle(
+					ctx.ui.theme,
+					`cannot verify — settings corrupt at ${settingsError?.path ?? "phala-tee.json"}`,
+				),
+			);
+			try {
+				ctx.ui.notify(
+					`phala-tee: settings file is corrupt — refusing to verify with a blank TOFU store. Inspect and fix:\n  ${settingsError?.path ?? ""}\n\nOr move the file aside to reset TOFU state intentionally, then /reload.`,
+					"error",
+				);
+			} catch {}
 			return;
 		}
 
@@ -236,6 +286,13 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("tee-trust", {
 		description: "Manage phala-tee app-identity trust policy (TOFU pins, allow-list)",
 		handler: async (args, ctx) => {
+			if (settingsError || !settings) {
+				ctx.ui.notify(
+					`phala-tee: settings corrupt — ${settingsError?.message ?? "unavailable"}`,
+					"error",
+				);
+				return;
+			}
 			const sub = (args || "").trim().split(/\s+/)[0] || "show";
 			if (sub === "show") {
 				const lines: string[] = [];

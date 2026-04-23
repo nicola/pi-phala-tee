@@ -19,29 +19,52 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_SETTINGS, type ExtensionSettings } from "./types.js";
 
-const SETTINGS_PATH = join(homedir(), ".pi", "agent", "phala-tee.json");
+export const SETTINGS_PATH = join(homedir(), ".pi", "agent", "phala-tee.json");
+
+/** Thrown when phala-tee.json exists but cannot be parsed. Callers must
+ * surface this to the user — silently resetting to defaults would wipe
+ * the TOFU pin store, allowing an attacker who can corrupt the file to
+ * force a re-pin against a malicious identity on the next turn.
+ * https://github.com/nicola/pi-phala-tee/issues/5 */
+export class SettingsCorruptError extends Error {
+	readonly path: string;
+	readonly cause: unknown;
+	constructor(path: string, cause: unknown) {
+		super(
+			`phala-tee settings file is corrupt: ${path}\n` +
+				`Refusing to continue. Inspect and fix the JSON, or move it aside to ` +
+				`reset TOFU state intentionally. Reason: ${cause instanceof Error ? cause.message : String(cause)}`,
+		);
+		this.path = path;
+		this.cause = cause;
+		this.name = "SettingsCorruptError";
+	}
+}
+
+function defaults(): ExtensionSettings {
+	return {
+		...DEFAULT_SETTINGS,
+		auditLogPath: join(homedir(), ".pi", "agent", "tee-audit.jsonl"),
+	};
+}
 
 export function loadSettings(): ExtensionSettings {
-	if (!existsSync(SETTINGS_PATH)) {
-		const s: ExtensionSettings = {
-			...DEFAULT_SETTINGS,
-			auditLogPath: join(homedir(), ".pi", "agent", "tee-audit.jsonl"),
-		};
-		return s;
-	}
+	if (!existsSync(SETTINGS_PATH)) return defaults();
+	let raw: string;
 	try {
-		const raw = readFileSync(SETTINGS_PATH, "utf8");
-		const parsed = JSON.parse(raw) as Partial<ExtensionSettings>;
-		return {
-			...DEFAULT_SETTINGS,
-			auditLogPath: join(homedir(), ".pi", "agent", "tee-audit.jsonl"),
-			...parsed,
-		};
-	} catch {
-		// If the settings file is corrupt, fail closed to defaults rather than
-		// silently lose TOFU state. The user can inspect/fix the file manually.
-		return { ...DEFAULT_SETTINGS, auditLogPath: join(homedir(), ".pi", "agent", "tee-audit.jsonl") };
+		raw = readFileSync(SETTINGS_PATH, "utf8");
+	} catch (e) {
+		// A read failure (permissions, disk error) is different from corruption;
+		// we still must NOT silently drop the pin store, so surface it.
+		throw new SettingsCorruptError(SETTINGS_PATH, e);
 	}
+	let parsed: Partial<ExtensionSettings>;
+	try {
+		parsed = JSON.parse(raw) as Partial<ExtensionSettings>;
+	} catch (e) {
+		throw new SettingsCorruptError(SETTINGS_PATH, e);
+	}
+	return { ...defaults(), ...parsed };
 }
 
 export function saveSettings(s: ExtensionSettings): void {
