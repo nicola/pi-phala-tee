@@ -63,6 +63,10 @@ interface CachedAtt {
 	composeHash: string | undefined;
 	osImageHash: string | undefined;
 	keyProvider: string | undefined;
+	/** Was TDX verified locally (so mr_config_id binding could be checked)? Needed
+	 * to reproduce the delegated-TDX app-facet downgrade on cache-hit turns. */
+	localTdxVerified: boolean;
+	mrConfigBinding: "ok" | "mismatch" | "unchecked";
 	evidence: Pick<Evidence, "attestationNonce" | "intelQuoteHex" | "nvidiaPayload" | "info" | "vmConfig" | "eventLog">;
 }
 const attCache = new Map<string, CachedAtt>();
@@ -131,15 +135,22 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 		facets.push(markCached(cached.reportdataFacet));
 		facets.push(markCached(cached.gpuFacet));
 		// Re-evaluate app identity fresh (see comment on CachedAtt).
-		facets.push(
-			evaluateAppIdentity(
-				cached.appId,
-				cached.composeHash,
-				cached.osImageHash,
-				cached.keyProvider,
-				input,
-			),
+		let cachedAppFacet = evaluateAppIdentity(
+			cached.appId,
+			cached.composeHash,
+			cached.osImageHash,
+			cached.keyProvider,
+			input,
+			cached.mrConfigBinding,
 		);
+		if (!cached.localTdxVerified && cachedAppFacet.status === "ok") {
+			cachedAppFacet = {
+				...cachedAppFacet,
+				status: "warn",
+				detail: `${cachedAppFacet.detail} · TDX delegated — compose-hash NOT cross-checked against mr_config_id`,
+			};
+		}
+		facets.push(cachedAppFacet);
 		facets.push({
 			id: "fresh",
 			label: "freshness",
@@ -290,7 +301,7 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 		}
 	}
 
-	const appFacet = evaluateAppIdentity(
+	let appFacet = evaluateAppIdentity(
 		appId,
 		composeHash,
 		osImageHash,
@@ -298,6 +309,19 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 		input,
 		mrConfigBinding,
 	);
+	// HIGH: on delegated-TDX platforms we have no `tdReport`, so we could
+	// NOT cross-check compose-hash against the TDX-signed mr_config_id. A
+	// compromised cloud-api.phala.com could return `verified: true` while
+	// the server crafts a matching event_log compose-hash. Refuse to show
+	// ✓ in that case — downgrade to ⚠ with an explicit reason. See:
+	// https://github.com/nicola/pi-phala-tee/issues/1
+	if (!tdReport && appFacet.status === "ok") {
+		appFacet = {
+			...appFacet,
+			status: "warn",
+			detail: `${appFacet.detail} · TDX delegated — compose-hash NOT cross-checked against mr_config_id`,
+		};
+	}
 	facets.push(appFacet);
 
 	// --- 10. Freshness
@@ -329,6 +353,8 @@ export async function verifyTurn(input: VerifyInput): Promise<Verdict> {
 			composeHash,
 			osImageHash,
 			keyProvider,
+			localTdxVerified: Boolean(tdReport),
+			mrConfigBinding,
 			evidence: {
 				attestationNonce: nonce,
 				intelQuoteHex: att.intel_quote,
